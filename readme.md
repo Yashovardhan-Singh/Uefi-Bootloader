@@ -14,8 +14,9 @@ git clone https://gitlab.com/Yashovardhan-Singh/uefi-bootloader.git
 2) Makefile rules:
 	* **run**: compile and create image, then run using qemu
 	* **compile**: compile the source to .efi
+	* **compile_utils**: compile all utility program in [utils](utils/) and place them in [utils](utils/)/out
 	* **image**: create a FAT32 image from .efi
-	* **clean**: clean build artifacts in bin folder, preserves built image
+	* **clean**: clean build artifacts in bin folder, preserves built image. deletes utilities as well
 
 **NOTE:** The makefile will prompt you for higher privilege, required to create a working bootable image
 

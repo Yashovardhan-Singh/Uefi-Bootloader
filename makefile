@@ -1,88 +1,93 @@
 # Makefile for building and running a UEFI Application.
 # Version 5: Uses granular sudo and robust lazy unmounting.
 
-.PHONY: all run image compile clean
+.PHONY: all run image compile compile_utils clean
 .DEFAULT_GOAL = all
 
 # --- Configuration ---
 
 # Directories
-BUILD_DIR      := bin
-SRC_DIR        := src
-OBJ_DIR        := $(BUILD_DIR)/obj
-EFI_SOURCE_DIR := $(BUILD_DIR)/source_efi
-MOUNT_POINT    := $(BUILD_DIR)/mount_point
+BUILD_DIR      	:= bin
+INC_DIR			:= include
+SRC_DIR        	:= src
+UTILS_DIR		:= utils
+UTILS_OUT_DIR	:= $(UTILS_DIR)/out
+OBJ_DIR        	:= $(BUILD_DIR)/obj
+EFI_SOURCE_DIR 	:= $(BUILD_DIR)/source_efi
+FIRM_DIR		:= firmware
 
 # Source and Target Files (Auto-discovery of .c files)
-SOURCES        := $(wildcard $(SRC_DIR)/*.c)
-OBJECTS        := $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
-TARGET_EFI     := $(EFI_SOURCE_DIR)/EFI/BOOT/BOOTX64.EFI
-TARGET_IMAGE   := $(BUILD_DIR)/efi.img
+MOUNT_POINT    	:= $(BUILD_DIR)/mount_point
+SOURCES        	:= $(wildcard $(SRC_DIR)/*.c)
+OBJECTS        	:= $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+TARGET_EFI     	:= $(EFI_SOURCE_DIR)/EFI/BOOT/BOOTX64.EFI
+TARGET_IMAGE   	:= $(BUILD_DIR)/efi.img
+UTILS_SOURCES	:= $(wildcard $(UTILS_DIR)/*.c)
+UTILS			:= $(UTILS_SOURCES:$(UTILS_DIR)/%.c=$(UTILS_OUT_DIR)/%)
 
 # Image Properties
-IMG_SIZE_MB    := 128
+IMG_SCRIPT		:= $(UTILS_DIR)/make_efi_img.sh
+IMG_SIZE_MB    	:= 128
 
 # Compiler and Flags
-CC             := clang
-TARGET_TRIPLE  := x86_64-unknown-windows
+CC             	:= clang
+TARGET_TRIPLE  	:= x86_64-unknown-windows
 
-CFLAGS         := -target $(TARGET_TRIPLE) \
-                  -std=c17 \
-                  -Wall \
-                  -Wextra \
-                  -Wpedantic \
-                  -mno-red-zone \
-                  -ffreestanding \
-                  -nostdlib
+CFLAGS         	:= -target $(TARGET_TRIPLE) \
+					-std=c17 \
+					-Wall \
+					-Wextra \
+					-Wpedantic \
+					-mno-red-zone \
+					-ffreestanding \
+					-nostdlib
 
-LDFLAGS        := -target $(TARGET_TRIPLE) \
-                  -fuse-ld=lld-link \
-                  -Wl,-subsystem:efi_application \
-                  -Wl,-entry:efi_main \
-                  -nostdlib
+COMMON_FLAGS	:= -I$(INC_DIR)
+
+LDFLAGS        	:= -target $(TARGET_TRIPLE) \
+					-fuse-ld=lld-link \
+					-Wl,-subsystem:efi_application \
+					-Wl,-entry:efi_main \
+					-nostdlib
 
 # QEMU Configuration
-QEMU           := qemu-system-x86_64
-OVMF_PATH      := $(CURDIR)/firmware/bios64.bin
-QEMU_FLAGS     := -drive format=raw,unit=0,file=$(TARGET_IMAGE) \
-                  -bios $(OVMF_PATH) \
-                  -m 256M \
-                  -vga std \
-                  -name "UEFI BOOT TEST" \
-                  -machine q35 \
-                  -net none
+QEMU           	:= qemu-system-x86_64
+OVMF_PATH      	:= $(FIRM_DIR)/bios64.bin
+QEMU_FLAGS     	:= -drive format=raw,unit=0,file=$(TARGET_IMAGE) \
+					-bios $(OVMF_PATH) \
+					-m 256M \
+					-vga std \
+					-name "UEFI BOOT TEST" \
+					-machine q35 \
+					-net none
 
 # --- Build Rules ---
 
 all: $(TARGET_IMAGE)
 
 run: all
-	@if [ ! -f "$(OVMF_PATH)" ]; then \
+	if [ ! -f "$(OVMF_PATH)" ]; then \
 		echo "Error: OVMF file not found at '$(OVMF_PATH)'."; \
 		exit 1; \
 	fi
-	@$(QEMU) $(QEMU_FLAGS)
+	$(QEMU) $(QEMU_FLAGS)
 
 image: $(TARGET_IMAGE)
 
 $(TARGET_IMAGE): $(TARGET_EFI)
-	mkdir -p $(BUILD_DIR)
-	dd if=/dev/zero of="$@" bs=1M count=$(IMG_SIZE_MB) status=progress >&2
-	sudo sgdisk --zap-all --new=1:0:0 --typecode=1:ef00 "$@" > /dev/null
-	$(SHELL) -ec ' \
-		LOOP_DEVICE=$$(sudo losetup --find --show --partscan "$@"); \
-		if [ -z "$$LOOP_DEVICE" ]; then echo "Error: Failed to set up loop device." >&2; exit 1; fi; \
-		trap "echo '\''Cleaning up mount and loop device...'\''; sudo umount -l \"$(MOUNT_POINT)\" 2>/dev/null || true; sudo losetup --detach \"$$LOOP_DEVICE\" 2>/dev/null || true; rm -rf \"$(MOUNT_POINT)\";" EXIT; \
-		PARTITION="$${LOOP_DEVICE}p1"; \
-		sleep 1; \
-		sudo mkfs.fat -F 32 "$$PARTITION" > /dev/null; \
-		mkdir -p "$(MOUNT_POINT)"; \
-		sudo mount "$$PARTITION" "$(MOUNT_POINT)"; \
-		sudo cp -r "$(EFI_SOURCE_DIR)"/* "$(MOUNT_POINT)/"; \
-		sudo sync; \
-	'
+	echo "--- Invoking Build Script to Create UEFI Image ---"
+	$(IMG_SCRIPT) \
+		"$(TARGET_IMAGE)" \
+		"$(IMG_SIZE_MB)" \
+		"$(EFI_SOURCE_DIR)" \
+		"$(MOUNT_POINT)"
 
 compile: $(TARGET_EFI)
+compile_utils: $(UTILS)
+
+$(UTILS_OUT_DIR)/%: $(UTILS_DIR)/%.c
+	mkdir -p $(UTILS_OUT_DIR)
+	$(CC) $(COMMON_FLAGS) -o $@ $<
 
 $(TARGET_EFI): $(OBJECTS)
 	mkdir -p $(shell dirname $@)
@@ -90,10 +95,10 @@ $(TARGET_EFI): $(OBJECTS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	mkdir -p $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(COMMON_FLAGS) -c -o $@ $<
 
 clean:
 	if [ -d "$(BUILD_DIR)" ]; then \
-		rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT) || \
-		(echo "Permission denied. Retrying with sudo..." && sudo rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT)); \
+		rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT) $(UTILS_OUT_DIR) || \
+		(echo "Permission denied. Retrying with sudo..." && sudo rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT) $(UTILS_OUT_DIR)); \
 	fi

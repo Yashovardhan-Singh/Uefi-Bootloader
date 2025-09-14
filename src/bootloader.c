@@ -1,30 +1,25 @@
-#include "efi.h"
+#include <efi.h>
 
 EFI_STATUS
 EFIAPI
 efi_main(
-	EFI_HANDLE ImageHandle,
-	EFI_SYSTEM_TABLE *SystemTable
+	IN EFI_HANDLE ImageHandle,
+	IN EFI_SYSTEM_TABLE *SystemTable
 ) {
-    (void)ImageHandle;
+	SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
+  
+	SystemTable->ConOut->OutputString(
+		SystemTable->ConOut, u"Hello, World!\r\n");
+  
+	SystemTable->ConOut->OutputString(
+		SystemTable->ConOut, u"Press any key to shutdown...");
 
-    SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 
-            EFI_TEXT_ATTR(EFI_YELLOW,EFI_GREEN)); 
+	EFI_INPUT_KEY key;
+	while (SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &key)
+		!= EFI_SUCCESS);
 
-    SystemTable->ConOut->ClearScreen(SystemTable->ConOut);
-    SystemTable->ConOut->OutputString(SystemTable->ConOut, u"Hello, World!\r\n\r\n");
-    
-    SystemTable->ConOut->SetAttribute(SystemTable->ConOut, 
-            EFI_TEXT_ATTR(EFI_RED,EFI_BLACK));
+	SystemTable->RuntimeServices->ResetSystem(
+		EfiResetShutdown, EFI_SUCCESS, 0,NULL);
 
-    SystemTable->ConOut->OutputString(SystemTable->ConOut, 
-            u"Press any key to shutdown..."); 
-
-    EFI_INPUT_KEY key;
-    while (SystemTable->ConIn->ReadKeyStroke(SystemTable->ConIn, &key) != EFI_SUCCESS)
-        ;
-    
-    SystemTable->RuntimeServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
-
-    return EFI_SUCCESS;
+  return EFI_SUCCESS;
 }
