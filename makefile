@@ -83,7 +83,7 @@ $(TARGET_IMAGE): $(TARGET_EFI)
 		"$(MOUNT_POINT)"
 
 compile: $(TARGET_EFI)
-compile_utils: $(UTILS)
+utils: $(UTILS)
 
 $(UTILS_OUT_DIR)/%: $(UTILS_DIR)/%.c
 	mkdir -p $(UTILS_OUT_DIR)
