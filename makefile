@@ -1,10 +1,5 @@
-# Makefile for building and running a UEFI Application.
-# Version 5: Uses granular sudo and robust lazy unmounting.
-
 .PHONY: all run image compile compile_utils clean
 .DEFAULT_GOAL = all
-
-# --- Configuration ---
 
 # Directories
 BUILD_DIR      	:= bin
@@ -16,7 +11,7 @@ OBJ_DIR        	:= $(BUILD_DIR)/obj
 EFI_SOURCE_DIR 	:= $(BUILD_DIR)/source_efi
 FIRM_DIR		:= firmware
 
-# Source and Target Files (Auto-discovery of .c files)
+# Source and Target Files 
 MOUNT_POINT    	:= $(BUILD_DIR)/mount_point
 SOURCES        	:= $(wildcard $(SRC_DIR)/*.c)
 OBJECTS        	:= $(SOURCES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
@@ -32,7 +27,6 @@ IMG_SIZE_MB    	:= 128
 # Compiler and Flags
 CC             	:= clang
 TARGET_TRIPLE  	:= x86_64-unknown-windows
-
 CFLAGS         	:= -target $(TARGET_TRIPLE) \
 					-std=c17 \
 					-Wall \
@@ -41,9 +35,7 @@ CFLAGS         	:= -target $(TARGET_TRIPLE) \
 					-mno-red-zone \
 					-ffreestanding \
 					-nostdlib
-
 COMMON_FLAGS	:= -I$(INC_DIR)
-
 LDFLAGS        	:= -target $(TARGET_TRIPLE) \
 					-fuse-ld=lld-link \
 					-Wl,-subsystem:efi_application \
@@ -61,7 +53,6 @@ QEMU_FLAGS     	:= -drive format=raw,unit=0,file=$(TARGET_IMAGE) \
 					-machine q35 \
 					-net none
 
-# --- Build Rules ---
 
 all: $(TARGET_IMAGE)
 
@@ -98,7 +89,5 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) $(COMMON_FLAGS) -c -o $@ $<
 
 clean:
-	if [ -d "$(BUILD_DIR)" ]; then \
-		rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT) $(UTILS_OUT_DIR) || \
-		(echo "Permission denied. Retrying with sudo..." && sudo rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(MOUNT_POINT) $(UTILS_OUT_DIR)); \
-	fi
+	rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(BUILD_DIR) $(UTILS_OUT_DIR) || \
+	(echo "Permission denied. Retrying with sudo..." && sudo rm -rf $(OBJ_DIR) $(EFI_SOURCE_DIR) $(BUILD_DIR) $(UTILS_OUT_DIR)); \

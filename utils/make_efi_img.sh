@@ -8,8 +8,7 @@
 #   and copying the necessary files, with robust cleanup on exit or failure.
 # =============================================================================
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
+set -e # Exit immediately if a command exits with a non-zero status.
 
 # --- Argument Validation ---
 if [ "$#" -ne 4 ]; then
@@ -60,8 +59,7 @@ fi
 PARTITION="${LOOP_DEVICE}p1"
 echo "      -> Loop device is $LOOP_DEVICE, partition is $PARTITION"
 
-# Give the kernel a moment to recognize the new partition
-sleep 1
+sleep 1 # Give the kernel a moment to recognize the new partition
 
 echo "[4/5] Formatting and mounting..."
 sudo mkfs.fat -F 32 "$PARTITION" > /dev/null
