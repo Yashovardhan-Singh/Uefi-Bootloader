@@ -35,7 +35,7 @@ MbrPartitionRecord;
 typedef struct {
 	uint8_t 			bootStrapCode[440];
 	uint32_t 			uniqueMbrSignature;
-	uint16_t 			unknown;		// spec defines 2 bytes as unknown
+	uint16_t 			unknown;
 	MbrPartitionRecord 	partition[4];
 	uint16_t 			signature;
 } __attribute__((packed))
@@ -71,14 +71,14 @@ typedef struct {
 GptPartEntry;
 
 // Global variables, for CLI options
-uint64_t lba_size = 512;
-uint64_t esp_size = 33 * 1024 * 1024;
-uint64_t data_size = 1 * 1024 * 1024;
-uint64_t write_size = 0;
+uint64_t lba_unit_size_b = 512;
+uint64_t esp_full_size_b = 33 * 1024 * 1024;
+uint64_t data_full_size_b = 1 * 1024 * 1024;
+uint64_t img_size_lba = 0;
 
-uint64_t align_lba = 0;
-uint64_t esp_lba = 0;
-uint64_t data_lba = 0;
+uint64_t global_lba_alignment = 0;
+uint64_t esp_location_lba = 0;
+uint64_t data_location_lba = 0;
 
 static uint32_t crc_table[256] = { 0 };
 static bool crc_table_init = false;
@@ -90,14 +90,15 @@ const Guid BASIC_DATA_GUID = { 0xEBD0A0A2, 0xB9E5, 0x4433, 0x87, 0xC0,
 								{ 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7 } };
 
 uint32_t bytesToLBAs(const uint32_t bytes) {
-	return (bytes + (lba_size - 1)) / lba_size;
+	return (bytes + (lba_unit_size_b - 1)) / lba_unit_size_b;
 }
 
 void padOutZeroes(FILE* img) {
 	uint8_t zeroSector[512] = { 0 };
-    size_t remaining = lba_size;
+    size_t remaining = lba_unit_size_b;
     while (remaining > 0) {
-        size_t chunk = (remaining > sizeof(zeroSector)) ? sizeof(zeroSector) : remaining;
+        size_t chunk = (remaining > sizeof(zeroSector)) ?
+			sizeof(zeroSector) : remaining;
         if (fwrite(zeroSector, 1, chunk, img) != chunk) {
             break;
         }
@@ -106,7 +107,7 @@ void padOutZeroes(FILE* img) {
 }
 
 uint64_t getNextAlignedLBA(const uint64_t lba) {
-	return lba - (lba % align_lba) + align_lba;
+	return lba - (lba % global_lba_alignment) + global_lba_alignment;
 }
 
 void createCRC32Table() {
@@ -166,8 +167,8 @@ Guid getGuid() {
 }
 
 bool writeMbr(FILE* img) {
-	uint32_t wSize = write_size - 1;
-	if (write_size > 0xFFFFFFFF) wSize = 0xFFFFFFFF; 
+	uint32_t wSize = img_size_lba - 1;
+	if (img_size_lba > 0xFFFFFFFF) wSize = 0xFFFFFFFF; 
 
 	MbrBootRecord mbr = {
 		.bootStrapCode = { 0 },
@@ -201,12 +202,12 @@ bool writeGpts(FILE* img) {
         .headerSize = 92,
         .headerCRC32 = 0,
         .reserved1 = 0,
-        .selfLBA = 1,                            // After MBR(0)
-        .altLBA = write_size - 1,
-        .firstUseLBA =  1 + 1 + (GPT_TABLE_SIZE / lba_size),
-        .lastUseLBA = write_size - 1 - (GPT_TABLE_SIZE / lba_size) - 1,
+        .selfLBA = 1,
+        .altLBA = img_size_lba - 1,
+        .firstUseLBA =  2 + (GPT_TABLE_SIZE / lba_unit_size_b),
+        .lastUseLBA = img_size_lba  - (GPT_TABLE_SIZE / lba_unit_size_b) - 2,
         .diskGUID = getGuid(),
-        .partEntryArrLBA = 2,                    // After MBR(0) and GPT(1)
+        .partEntryArrLBA = 2,
         .numPartEntries = NO_GPT_PARTITION_ENTRIES,
         .sizePartEntry = PARTITION_ENTRY_SIZE,
         .partEntryArrCRC32 = 0,
@@ -218,8 +219,8 @@ bool writeGpts(FILE* img) {
     table[0] = (GptPartEntry) {
         .partTypeGUID = ESP_GUID,
         .uniquePartGUID = getGuid(),
-        .startLBA = esp_lba,
-        .endLBA = esp_lba + bytesToLBAs(esp_size) - 1,
+        .startLBA = esp_location_lba,
+        .endLBA = esp_location_lba + bytesToLBAs(esp_full_size_b) - 1,
         .attrib = 0,
         .partName = u"EFI SYSTEM"
     };
@@ -227,8 +228,8 @@ bool writeGpts(FILE* img) {
     table[1] = (GptPartEntry) {
         .partTypeGUID = BASIC_DATA_GUID,
         .uniquePartGUID = getGuid(),
-        .startLBA = data_lba,
-        .endLBA = data_lba + bytesToLBAs(data_size) - 1,
+        .startLBA = data_location_lba,
+        .endLBA = data_location_lba + bytesToLBAs(data_full_size_b) - 1,
         .attrib = 0,
         .partName = u"BASIC DATA"
     };
@@ -238,27 +239,40 @@ bool writeGpts(FILE* img) {
     primary.headerCRC32 = 0;
     primary.headerCRC32 = calcCRC32(&primary, primary.headerSize);
 
-    if (fseek(img, primary.selfLBA * lba_size, SEEK_SET) != 0) return false;
-    if (fwrite(&primary, 1, lba_size, img) != lba_size) return false;
+    if (fseek(img, primary.selfLBA * lba_unit_size_b, SEEK_SET) != 0)
+		return false;
 
-    if (fseek(img, primary.partEntryArrLBA * lba_size, SEEK_SET) != 0) return false;
-    if (fwrite(&table, 1, sizeof(table), img) != sizeof(table)) return false;
+    if (fwrite(&primary, 1, lba_unit_size_b, img) != lba_unit_size_b)
+		return false;
+
+    if (fseek(img, primary.partEntryArrLBA * lba_unit_size_b, SEEK_SET) != 0)
+		return false;
+
+    if (fwrite(&table, 1, sizeof(table), img) != sizeof(table))
+		return false;
 
     GptHeader secondary = primary;
     secondary.selfLBA = primary.altLBA;
     secondary.altLBA = primary.selfLBA;
-    secondary.partEntryArrLBA = primary.altLBA - (GPT_TABLE_SIZE / lba_size);
+    secondary.partEntryArrLBA = 
+		primary.altLBA - (GPT_TABLE_SIZE / lba_unit_size_b);
 
     secondary.partEntryArrCRC32 = calcCRC32(table, sizeof(table));
 
     secondary.headerCRC32 = 0;
     secondary.headerCRC32 = calcCRC32(&secondary, secondary.headerSize);
 
-    if (fseek(img, secondary.partEntryArrLBA * lba_size, SEEK_SET) != 0) return false;
-    if (fwrite(&table, 1, sizeof(table), img) != sizeof(table)) return false;
+    if (fseek(img, secondary.partEntryArrLBA * lba_unit_size_b, SEEK_SET) != 0)
+		return false;
+    
+	if (fwrite(&table, 1, sizeof(table), img) != sizeof(table))
+		return false;
 
-    if (fseek(img, secondary.selfLBA * lba_size, SEEK_SET) != 0) return false;
-    if (fwrite(&secondary, 1, lba_size, img) != lba_size) return false;
+    if (fseek(img, secondary.selfLBA * lba_unit_size_b, SEEK_SET) != 0)
+		return false;
+    
+	if (fwrite(&secondary, 1, lba_unit_size_b, img) != lba_unit_size_b)
+		return false;
 
     return true;
 }
@@ -270,12 +284,17 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 
-	const uint64_t padding = (ALIGNMENT * 2 + (lba_size * 67));
-	uint32_t img_size = data_size + esp_size + padding;
-	write_size  = bytesToLBAs(img_size);
-	align_lba = ALIGNMENT / lba_size;
-	esp_lba = align_lba;
-	data_lba = getNextAlignedLBA(esp_lba + bytesToLBAs(esp_size));
+	// Padding the image
+	const uint64_t padding = (ALIGNMENT * 2 + (lba_unit_size_b * 67));
+	uint32_t img_size = data_full_size_b + esp_full_size_b + padding; // bytes
+	
+	global_lba_alignment = ALIGNMENT / lba_unit_size_b;
+	img_size_lba  = bytesToLBAs(img_size);
+	esp_location_lba = global_lba_alignment + 0; // 0th LBA + alignment
+	
+	// next aligned LBA after ESP
+	data_location_lba = getNextAlignedLBA(
+		esp_location_lba + bytesToLBAs(esp_full_size_b));
 
 	FILE* imgFile = fopen(argv[1], "wb+");
 	if (!imgFile) {
