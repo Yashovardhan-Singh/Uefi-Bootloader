@@ -166,17 +166,16 @@ typedef struct {
 // EFI System Table: UEFI Spec 2.10 section 4.3
 typedef struct {
     EFI_TABLE_HEADER                Hdr;
-
     void*                           FirmwareVendor;
     UINT32                          FirmwareRevision;
     void*                           ConsoleInHandle;
     EFI_SIMPLE_TEXT_INPUT_PROTOCOL 	*ConIn;
-	void*                           ConsoleOutHandle;
-	EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConOut;
-	void*                           StandardErrorHandle;
-	void*                           StdErr;
-	EFI_RUNTIME_SERVICES            *RuntimeServices;
-	void*                           BootServices;
-	UINTN                           NumberOfTableEntries;
-	void*                           ConfigurationTable;
+    void*                           ConsoleOutHandle;
+    EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConOut;
+    void*                           StandardErrorHandle;
+    void*                           StdErr;
+    EFI_RUNTIME_SERVICES            *RuntimeServices;
+    void*                           BootServices;
+    UINTN                           NumberOfTableEntries;
+    void*                           ConfigurationTable;
 } EFI_SYSTEM_TABLE;

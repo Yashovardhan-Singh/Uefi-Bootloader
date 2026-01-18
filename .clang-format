@@ -1,0 +1,25 @@
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 80
+
+BreakBeforeBraces: Attach
+AllowShortIfStatementsOnASingleLine: false
+
+SpacesInParentheses: false
+SpaceAfterCStyleCast: true
+
+SortIncludes: true
+IncludeBlocks: Regroup
+
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+SpacesBeforeTrailingComments: 2
+ReflowComments: true

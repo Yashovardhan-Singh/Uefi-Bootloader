@@ -24,3 +24,5 @@ git clone https://gitlab.com/Yashovardhan-Singh/uefi-bootloader.git
 * [qemu](https://www.qemu.org/): Emulator to run the bootloader
 * [clang](https://clang.llvm.org/): Compiler for C, works better than gcc
 * [lld](https://lld.llvm.org/): LLVM linker, required for PE/COFF executable
+* sgdisk (gptfdisk package on arch)
+* mkfs.fat (dosfstools package on arch)
